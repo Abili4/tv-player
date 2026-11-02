@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+  #p { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="p"></div>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+  let player, ready = false, pending = null, curVid = null;
+
+  function onYouTubeIframeAPIReady() {
+    player = new YT.Player('p', {
+      width: '100%', height: '100%',
+      playerVars: { autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1, rel: 0, playsinline: 1 },
+      events: { onReady: () => { ready = true; if (pending) apply(pending); } }
+    });
+  }
+
+  function apply(m) {
+    if (!ready) { pending = m; return; }
+    if (m.stop) { player.stopVideo(); curVid = null; return; }
+    if (m.vid !== curVid) {
+      curVid = m.vid;
+      player.loadVideoById({ videoId: m.vid, startSeconds: m.pos || 0 });
+    } else if (Math.abs(player.getCurrentTime() - m.pos) > 3) {
+      player.seekTo(m.pos, true);
+    }
+    player.setVolume(m.volume);
+    m.playing ? player.playVideo() : player.pauseVideo();
+  }
+
+  window.addEventListener('message', e => apply(e.data));
+</script>
+</body>
+</html>
