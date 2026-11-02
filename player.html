@@ -2,35 +2,108 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <style>
   html, body { margin: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
   #p { width: 100%; height: 100%; }
+  #msg {
+    position: fixed; left: 12px; top: 12px; z-index: 10;
+    font: 600 22px/1.3 Arial, sans-serif; color: #fff;
+    background: rgba(0,0,0,.7); padding: 8px 12px; border-radius: 8px;
+    display: none; max-width: 90%;
+  }
 </style>
 </head>
 <body>
 <div id="p"></div>
+<div id="msg"></div>
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
   let player, ready = false, pending = null, curVid = null;
+  const msgEl = document.getElementById('msg');
+
+  // Mode test dans le navigateur : player.html?v=dQw4w9WgXcQ
+  const params = new URLSearchParams(location.search);
+  const testVid = params.get('v');
+
+  function show(t) {
+    if (!t) { msgEl.style.display = 'none'; return; }
+    msgEl.textContent = t;
+    msgEl.style.display = 'block';
+  }
+
+  const ERRORS = {
+    2:   'ID de video invalide',
+    5:   'Erreur du lecteur HTML5',
+    100: 'Video introuvable ou privee',
+    101: 'Integration desactivee par le proprietaire de la video',
+    150: 'Integration desactivee par le proprietaire de la video',
+    153: 'YouTube refuse : origine/referrer manquant'
+  };
 
   function onYouTubeIframeAPIReady() {
+    const vars = {
+      autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1,
+      rel: 0, playsinline: 1, fs: 0, iv_load_policy: 3
+    };
+    if (location.protocol === 'https:' || location.protocol === 'http:') {
+      vars.origin = location.origin;
+    }
+
     player = new YT.Player('p', {
       width: '100%', height: '100%',
-      playerVars: { autoplay: 1, controls: 0, disablekb: 1, modestbranding: 1, rel: 0, playsinline: 1 },
-      events: { onReady: () => { ready = true; if (pending) apply(pending); } }
+      host: 'https://www.youtube.com',
+      playerVars: vars,
+      events: {
+        onReady: () => {
+          ready = true;
+          if (testVid) {
+            player.mute();
+            apply({ vid: testVid, playing: true, volume: 0, pos: 0 });
+            show('MODE TEST - son coupe (video : ' + testVid + ')');
+            setTimeout(() => show(''), 4000);
+          } else if (pending) {
+            apply(pending);
+          }
+        },
+        onError: (e) => {
+          show('Erreur YouTube ' + e.data + ' : ' + (ERRORS[e.data] || 'inconnue'));
+        },
+        onStateChange: (e) => {
+          // 1 = en lecture : on cache tout message d'erreur
+          if (e.data === 1) show('');
+        }
+      }
     });
   }
 
   function apply(m) {
+    if (typeof m === 'string') {
+      try { m = JSON.parse(m); } catch (err) { return; }
+    }
+    if (!m || typeof m !== 'object') return;
     if (!ready) { pending = m; return; }
-    if (m.stop) { player.stopVideo(); curVid = null; return; }
+
+    if (m.stop) {
+      player.stopVideo();
+      curVid = null;
+      show('');
+      return;
+    }
+    if (!m.vid) return;
+
+    const pos = Number(m.pos) || 0;
+    const vol = Math.max(0, Math.min(100, Number(m.volume) || 0));
+
     if (m.vid !== curVid) {
       curVid = m.vid;
-      player.loadVideoById({ videoId: m.vid, startSeconds: m.pos || 0 });
-    } else if (Math.abs(player.getCurrentTime() - m.pos) > 3) {
-      player.seekTo(m.pos, true);
+      show('');
+      player.loadVideoById({ videoId: m.vid, startSeconds: pos });
+    } else if (Math.abs(player.getCurrentTime() - pos) > 3) {
+      player.seekTo(pos, true);
     }
-    player.setVolume(m.volume);
+
+    if (!testVid) player.setVolume(vol);
     m.playing ? player.playVideo() : player.pauseVideo();
   }
 
